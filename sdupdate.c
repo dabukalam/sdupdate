@@ -18,19 +18,28 @@ int main (char argc, char **argv) {
 	printf("Destination: %s\n", dest);
 
 	int a = copy(srce, dest);
-	if (a==-1)
+	if (a!=1) {
+		printf("Error: File Could not be read\n");
 		return EXIT_FAILURE;
-	else
-		printf("%c\n",a);
+	}
+	if (a==1) {
+		printf("File Copied Successfully.\n");
+	
 
 	return 0;
 }
 
 int copy (char* srce, char* dest) {
 	FILE *srcfile = fopen (srce,"r");
+	FILE *destfile = fopen (dest,"r");
+	char tmpch;
 	if (srcfile==NULL)
-		return -1;
+		return 0;
 	else {
-		char balls = fgetc(srcfile);
+		while (!feof(srcfile)) {
+			tmpch = fgetc(srcfile);
+			putc(tmpch, destfile);
+		}
+		return 1;
 	}
 }
