@@ -44,6 +44,7 @@ int copy (const char* srce, char* dest) {
 		tmpch = fgetc(srcfile);
 		putc(tmpch, destfile);
 	}
+	fclose(destfile);
 	return 1;
 }
 
