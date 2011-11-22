@@ -1,4 +1,4 @@
-CFLAGS = -Wall -Werror -pedantic --std=c99 -O2 -g
+CFLAGS = -Wall -Werror -pedantic --std=c99 -O2 -g -pg
 all: sdupdate
 	gcc -o sdupdate sdupdate.c
 
