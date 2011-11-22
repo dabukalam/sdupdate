@@ -1,9 +1,9 @@
-all:
+CFLAGS = -Wall -Werror -pedantic --std=c99 -O2 -g
+all: sdupdate
 	gcc -o sdupdate sdupdate.c
-objects = sdupdate test1234 copy1234
 
 clean :
-	rm $(objects)
+	rm -f sdupdate sdupdate.o
 
 check :
 	./test.sh

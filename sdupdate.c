@@ -38,7 +38,7 @@ int copy (const char* srce, const char* dest) {
 	return 0;
 }
 
-int main (char argc, const char **argv) {
+int main (int argc, const char **argv) {
 	
 	if (argc != 3) {
 		fprintf(stderr,"invalid number of arguments: %d: %s\n", errno, strerror(errno));
