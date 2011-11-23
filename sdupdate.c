@@ -17,9 +17,18 @@ int copy (const char* srce, const char* dest) {
 		return 1;
 	}
 
-	int tmpch;
-	while ((tmpch = fgetc(srcfile)) !=EOF)
-		putc(tmpch, destfile);
+	int blocksize = 1;
+	char tmpch[100];
+	int count = 100;
+	int j = count;
+
+	while (j == count) {
+		j = fread (&tmpch, blocksize, count, srcfile);
+		if (j != count) 
+			fwrite(tmpch, blocksize, j, destfile);
+		else
+			fwrite(tmpch, blocksize, count, destfile);
+	}
 
 	if (fflush(destfile)) {
 		fprintf(stderr,"error while emptying buffer: %d: %s\n", errno, strerror(errno));
