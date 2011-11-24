@@ -8,7 +8,7 @@ int copy (const char* srce, const char* dest, size_t buff) {
     FILE *srcfile = fopen (srce,"rb");
     if (srcfile==NULL) {
         fprintf(stderr, "%s: file could not be read: %d: %s\n", srce, errno,
-        strerror(errno));
+                strerror(errno));
         
         return 1;
     }
@@ -16,7 +16,7 @@ int copy (const char* srce, const char* dest, size_t buff) {
     FILE *destfile = fopen (dest,"wb");
     if (destfile == NULL) {
         fprintf(stderr, "%s: file write error: %d: %s\n", dest, errno,
-        strerror(errno));
+                strerror(errno));
         
         return 1;
     }
@@ -33,28 +33,28 @@ int copy (const char* srce, const char* dest, size_t buff) {
 
     if (fflush(destfile)) {
         fprintf(stderr,"error while emptying buffer: %d: %s\n", errno,
-        strerror(errno));
+                strerror(errno));
         
         return 1;
     }
 
     if (ferror(srcfile)) {
         fprintf(stderr,"%s: file read error: %d: %s\n", srce, errno,
-        strerror(errno));
+                strerror(errno));
         
         return 1;
     }
 
     if (ferror(destfile)) {
         fprintf(stderr,"%s: file write error: %d: %s\n", dest, errno,
-        strerror(errno));
+                strerror(errno));
         
         return 1;
     }
 
     if (fclose(destfile)) {
         fprintf(stderr,"%s: error closing file: %d: %s\n", dest, errno,
-        strerror(errno));
+                strerror(errno));
         
         return 1;
     }
@@ -66,7 +66,7 @@ int main (int argc, const char **argv) {
     
     if (argc != 3) {
         fprintf(stderr,"invalid number of arguments: %d: %s\n", errno,
-        strerror(errno));
+                strerror(errno));
         
         return EXIT_FAILURE;
     }
