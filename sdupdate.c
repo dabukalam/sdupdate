@@ -3,7 +3,7 @@
 #include <errno.h>
 #include <stdlib.h>
 
-int copy (const char* srce, const char* dest) {
+int copy (const char* srce, const char* dest, size_t buff) {
     
     FILE *srcfile = fopen (srce,"rb");
     if (srcfile==NULL) {
@@ -22,7 +22,7 @@ int copy (const char* srce, const char* dest) {
     }
 
     int blocksize = 1;
-    char tmpch[100];
+    char* tmpch = malloc(buff);
     int count, lastw; 
     lastw = count = sizeof(tmpch);
 
@@ -74,7 +74,9 @@ int main (int argc, const char **argv) {
     const char* srce = argv[1];
     const char* dest = argv[2];
 
-    int failure = copy(srce, dest);
+    int buff = 100;
+
+    int failure = copy(srce, dest, buff);
     if (failure) {
         fprintf(stderr,"copy failure: %d: %s\n", errno, strerror(errno));
         
