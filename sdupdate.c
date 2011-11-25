@@ -2,6 +2,31 @@
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <unistd.h>
+
+unsigned long buffparser (char* buff) {
+    int size = strlen(buff);
+    char lastch = buff[size-1];
+    if (lastch >= 48 && lastch <= 57)
+        return atof(buff);
+    else {
+        int i;
+        char* newbuff = malloc(size-1);
+        for (i = 0; i < size-1; i++)
+            newbuff[i] = buff[i];
+        float mltplr = atof(newbuff);
+        switch (lastch) {
+            case 'K':
+                return mltplr*1024;
+            case 'M':
+                return mltplr*1024*1024;
+            case 'G':
+                return mltplr*1024*1024*1024;
+            default:
+                return 0;
+        }
+    }
+}
 
 int copy (const char* srce, const char* dest, size_t buff) {
     
@@ -62,26 +87,64 @@ int copy (const char* srce, const char* dest, size_t buff) {
     return 0;
 }
 
-int main (int argc, const char **argv) {
+int main (int argc, char **argv) {
     
-    if (argc != 3) {
-        fprintf(stderr,"invalid number of arguments: %d: %s\n", errno,
-                strerror(errno));
+    char* fname = argv[0];
+    if (argc < 3) {
+        fprintf(stderr,"%s: invalid number of arguments\n", fname);
         
         return EXIT_FAILURE;
     }
+
+    unsigned long buff;
+    int opt;
+    int verbose = 0;
+
+    while ((opt=getopt(argc,argv,"vb:"))!=-1) {
+        switch (opt) {
+            case 'v':
+                verbose = 1;
+                break;
+            case 'b':
+                if ((buff = buffparser(optarg)) == 0) {
+                    fprintf(stderr,"%s: invalid buffer multiplier\n", fname);
+                    return EXIT_FAILURE;
+                }                
+                break;
+            case '?':
+                if (optopt=='b') {
+                    fprintf(stderr,"%s: invalid argument to -%c\n", fname,
+                            optopt);
+                    return EXIT_FAILURE;
+                }
+                break;
+        }
+        if (!opterr)
+            return EXIT_FAILURE;
+    }
+
+    if (buff<=0) {
+        fprintf(stderr,"%s: invalid Buffer Size: %lu\n", fname, buff);
+        return EXIT_FAILURE;
+    }
+        
     
-    const char* srce = argv[1];
-    const char* dest = argv[2];
+    const char* srce = argv[optind];
+    const char* dest = argv[optind+1];
+    if (argv[optind+2]!=NULL) {
+        fprintf(stderr,"%s: unexpected extra argument\n", argv[optind+2]);
+        return EXIT_FAILURE;
+    }
+    printf("SRCFILE = %s\n",srce);
+    printf("DSTFILE = %s\n",dest);
 
-    int buff = 100;
 
-    int failure = copy(srce, dest, buff);
-    if (failure) {
+    int failure = copy(srce, dest, buff); 
+    /*if (failure) {
         fprintf(stderr,"copy failure: %d: %s\n", errno, strerror(errno));
         
         return EXIT_FAILURE;
-    }
+    }*/
 
     return EXIT_SUCCESS;    
 }
