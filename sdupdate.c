@@ -46,13 +46,14 @@ int copy (const char* srce, const char* dest, size_t buff) {
         return 1;
     }
 
-    int blocksize = 1;
+    //buffer size of array
     char* tmpch = malloc(buff);
-    int count, lastw; 
+    int count, lastw;
     lastw = count = sizeof(tmpch);
 
     do {
-        lastw = fread (tmpch, blocksize, count, srcfile);
+        //read one character at a time into tmpch
+        lastw = fread (tmpch, 1, count, srcfile);
         fwrite(tmpch, blocksize, lastw, destfile);
     } while (lastw > 0);
 
@@ -119,8 +120,6 @@ int main (int argc, char **argv) {
                 }
                 break;
         }
-        if (!opterr)
-            return EXIT_FAILURE;
     }
 
     if (buff<=0) {
@@ -135,9 +134,6 @@ int main (int argc, char **argv) {
         fprintf(stderr,"%s: unexpected extra argument\n", argv[optind+2]);
         return EXIT_FAILURE;
     }
-    printf("SRCFILE = %s\n",srce);
-    printf("DSTFILE = %s\n",dest);
-
 
     int failure = copy(srce, dest, buff); 
     /*if (failure) {
