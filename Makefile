@@ -3,7 +3,7 @@ all: sdupdate
 	gcc -o sdupdate sdupdate.c -pg
 
 clean :
-	rm -f sdupdate sdupdate.o
+	rm -f sdupdate sdupdate.o copy1234 test1234
 
 check :
 	./test.sh

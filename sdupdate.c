@@ -39,7 +39,7 @@ int copy (const char* srce, const char* dest, size_t buff) {
         return 1;
     }
 
-    FILE *destfile = fopen (dest,"wb");
+    FILE *destfile = fopen (dest,"rb+");
     if (destfile == NULL) {
         fprintf(stderr, "%s: file write error: %d: %s\n", dest, errno,
                 strerror(errno));
@@ -49,13 +49,30 @@ int copy (const char* srce, const char* dest, size_t buff) {
 
     //buffer size of array
     char* tmpch = malloc(buff);
-    int count, lastw;
-    count = buff;
+    char* cmpch = malloc(buff);
+    long count = buff;
+    int lastw;
+    long position;
+    
+    printf("count = %ld\n", count);
 
     do {
-        //read one character at a time into tmpch
+        //read buff bytes into array of size buff for both src and dest
         lastw = fread (tmpch, 1, count, srcfile);
-        fwrite(tmpch, 1, lastw, destfile);
+        fread (cmpch, 1, count, destfile);
+
+        //compare corresponding blocks in src and dest and if equal skip
+        if (memcmp(cmpch,tmpch,lastw)!=0) {
+            position = ftell(destfile);
+            fseek(destfile, position, SEEK_SET);
+            fwrite(tmpch, 1, lastw, destfile);
+            if (ferror(destfile)) {
+                fprintf(stderr,"%s: file write error: %d: %s\n", dest, errno,
+                        strerror(errno));
+                return 1;
+            }
+        }
+
     } while (lastw > 0);
 
     if (fflush(destfile)) {
@@ -72,12 +89,12 @@ int copy (const char* srce, const char* dest, size_t buff) {
         return 1;
     }
 
-    if (ferror(destfile)) {
+/*    if (ferror(destfile)) {
         fprintf(stderr,"%s: file write error: %d: %s\n", dest, errno,
                 strerror(errno));
         
         return 1;
-    }
+    }*/
 
     if (fclose(destfile)) {
         fprintf(stderr,"%s: error closing file: %d: %s\n", dest, errno,
