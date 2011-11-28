@@ -50,7 +50,7 @@ int copy (const char* srce, const char* dest, size_t buff) {
     //buffer size of array
     char* tmpch = malloc(buff);
     int count, lastw;
-    lastw = count = sizeof(tmpch);
+    count = buff;
 
     do {
         //read one character at a time into tmpch
@@ -85,7 +85,7 @@ int copy (const char* srce, const char* dest, size_t buff) {
         
         return 1;
     }
-    
+    free(tmpch);
     return 0;
 }
 
