@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 2
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -54,7 +55,7 @@ int copy (const char* srce, const char* dest, size_t buff) {
     do {
         //read one character at a time into tmpch
         lastw = fread (tmpch, 1, count, srcfile);
-        fwrite(tmpch, blocksize, lastw, destfile);
+        fwrite(tmpch, 1, lastw, destfile);
     } while (lastw > 0);
 
     if (fflush(destfile)) {
@@ -97,15 +98,11 @@ int main (int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    unsigned long buff;
+    unsigned long buff = 1024*1024;
     int opt;
-    int verbose = 0;
 
-    while ((opt=getopt(argc,argv,"vb:"))!=-1) {
+    while ((opt=getopt(argc,argv,"b:"))!=-1) {
         switch (opt) {
-            case 'v':
-                verbose = 1;
-                break;
             case 'b':
                 if ((buff = buffparser(optarg)) == 0) {
                     fprintf(stderr,"%s: invalid buffer multiplier\n", fname);
@@ -126,21 +123,19 @@ int main (int argc, char **argv) {
         fprintf(stderr,"%s: invalid Buffer Size: %lu\n", fname, buff);
         return EXIT_FAILURE;
     }
-        
     
     const char* srce = argv[optind];
     const char* dest = argv[optind+1];
+    
     if (argv[optind+2]!=NULL) {
         fprintf(stderr,"%s: unexpected extra argument\n", argv[optind+2]);
         return EXIT_FAILURE;
     }
 
     int failure = copy(srce, dest, buff); 
-    /*if (failure) {
-        fprintf(stderr,"copy failure: %d: %s\n", errno, strerror(errno));
-        
+    if (failure) {
         return EXIT_FAILURE;
-    }*/
+    }
 
     return EXIT_SUCCESS;    
 }
