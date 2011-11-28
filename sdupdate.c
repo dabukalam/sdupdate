@@ -5,6 +5,15 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+int file_exists (const char* path) {
+    FILE* file;
+    if (file = fopen(path,"r")) {
+        fclose(file);
+        return 1;
+    }
+    return 0;
+}
+
 unsigned long buffparser (char* buff) {
     int size = strlen(buff);
     char lastch = buff[size-1];
@@ -35,26 +44,28 @@ int copy (const char* srce, const char* dest, size_t buff) {
     if (srcfile==NULL) {
         fprintf(stderr, "%s: file could not be read: %d: %s\n", srce, errno,
                 strerror(errno));
-        
         return 1;
     }
-
-    FILE *destfile = fopen (dest,"rb+");
-    if (destfile == NULL) {
-        fprintf(stderr, "%s: file write error: %d: %s\n", dest, errno,
+    
+    
+    FILE *destfile;
+    if (file_exists(dest))
+        destfile = fopen (dest,"r+b");
+    else
+        destfile = fopen (dest,"wb");
+    
+    if (destfile==NULL) {
+        fprintf(stderr, "%s: file could not be read: %d: %s\n", dest, errno,
                 strerror(errno));
-        
         return 1;
     }
-
+    
     //buffer size of array
     char* tmpch = malloc(buff);
     char* cmpch = malloc(buff);
     long count = buff;
     int lastw;
     long position;
-    
-    printf("count = %ld\n", count);
 
     do {
         //read buff bytes into array of size buff for both src and dest
@@ -63,14 +74,26 @@ int copy (const char* srce, const char* dest, size_t buff) {
 
         //compare corresponding blocks in src and dest and if equal skip
         if (memcmp(cmpch,tmpch,lastw)!=0) {
+            printf("\nEntered mismatch loop\n");
+            printf("Source String = %s\n",tmpch);
+            printf("Dest String = %s\n\n",cmpch);
             position = ftell(destfile);
-            fseek(destfile, position, SEEK_SET);
+            printf("Got position of pointer\n");
+            fseek(destfile, position-count, SEEK_SET);
+            printf("Moved back a block for writing.\n");
             fwrite(tmpch, 1, lastw, destfile);
+            printf("Wrote array to block\n\n");
+            printf("New Dest String = %s\n",cmpch);
             if (ferror(destfile)) {
                 fprintf(stderr,"%s: file write error: %d: %s\n", dest, errno,
                         strerror(errno));
                 return 1;
             }
+        }
+        else {
+            printf("Source String = %s\n",tmpch);
+            printf("Dest String = %s\n",cmpch);
+            printf("MATCH! SKIPPED!\n");   
         }
 
     } while (lastw > 0);
