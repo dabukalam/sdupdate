@@ -4,20 +4,21 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <limits.h>
 
-int file_exists (const char* path) {
+/*int file_exists (const char* path) {
     FILE* file;
     if ((file = fopen(path,"r"))) {
         fclose(file);
         return 1;
     }
     return 0;
-}
+}*/
 
 unsigned long buffparser (char* buff) {
     int size = strlen(buff);
     char lastch = buff[size-1];
-    if (lastch >= 48 && lastch <= 57)
+    if (lastch >= '0' && lastch <= '9')
         return atof(buff);
     else {
         int i;
@@ -38,7 +39,7 @@ unsigned long buffparser (char* buff) {
     }
 }
 
-int copy (const char* srce, const char* dest, size_t buff) {
+int copy (const char* srce, const char* dest, size_t buffsize) {
     
     FILE *srcfile = fopen (srce,"rb");
     if (srcfile==NULL) {
@@ -47,15 +48,21 @@ int copy (const char* srce, const char* dest, size_t buff) {
         return 1;
     }
     
-    int compare;
-    
     FILE *destfile;
-    if (file_exists(dest)) {
+
+    if ((destfile = fopen (dest,"r+b")) == NULL)
+        if ((destfile = fopen (dest,"w+b")) == NULL) {
+            fprintf(stderr, "%s: file could not be read: %d: %s\n", dest, errno,
+                    strerror(errno));
+            return 1;
+        }
+
+/*    if (file_exists(dest)) {
         destfile = fopen (dest,"r+b");
         compare = 1;
     }
     else {
-        destfile = fopen (dest,"wb");
+        destfile = fopen (dest,"w+b");
         compare = 0;
     }
     
@@ -63,26 +70,35 @@ int copy (const char* srce, const char* dest, size_t buff) {
         fprintf(stderr, "%s: file could not be read: %d: %s\n", dest, errno,
                 strerror(errno));
         return 1;
-    }
+    }*/
     
     //buffer size of array
-    char* tmpch = malloc(buff);
-    char* cmpch = malloc(buff);
-    long count = buff;
+    char* tmpch;
+    char* cmpch;
+    if ( (tmpch = malloc(buffsize)) == NULL) {
+        fprintf(stderr,"%lu: memory allocation error: %d: %s\n", buffsize, 
+                errno, strerror(errno));
+        return EXIT_FAILURE;
+    }
+    if ( (cmpch  = malloc(buffsize)) == NULL) {
+        fprintf(stderr,"%lu: memory allocation error: %d: %s\n", buffsize, 
+                errno, strerror(errno));
+        return EXIT_FAILURE;
+    }
+    long offset = buffsize;
     int lastw;
-    long position;
     int blocksize = 1;
 
     do {
 
-        lastw = fread (tmpch, 1, count, srcfile);
+        lastw = fread (tmpch, blocksize, buffsize, srcfile);
 
-        if (compare || (fread (cmpch, 1, lastw, destfile))) {
+        if (fread (cmpch, blocksize, lastw, destfile)) {
                         
         //compare corresponding blocks in src and dest and if equal skip
             if (memcmp(cmpch,tmpch,lastw)!=0) {
-                position = ftell(destfile);
-                fseek(destfile, position-count, SEEK_SET);
+                printf("In compare loop\n");
+                fseek(destfile, -offset, SEEK_CUR);
                 fwrite(tmpch, blocksize, lastw, destfile);
                 if (ferror(destfile)) {
                     fprintf(stderr,"%s: first file write error: %d: %s\n", dest, 
@@ -105,15 +121,15 @@ int copy (const char* srce, const char* dest, size_t buff) {
 
     } while (lastw > 0);
 
-    if (fflush(destfile)) {
-        fprintf(stderr,"error while emptying buffer: %d: %s\n", errno,
+    if (ferror(srcfile)) {
+        fprintf(stderr,"%s: file read error: %d: %s\n", srce, errno,
                 strerror(errno));
         
         return 1;
     }
 
-    if (ferror(srcfile)) {
-        fprintf(stderr,"%s: file read error: %d: %s\n", srce, errno,
+    if (fflush(destfile)) {
+        fprintf(stderr,"error while emptying buffer: %d: %s\n", errno,
                 strerror(errno));
         
         return 1;
@@ -133,53 +149,80 @@ int copy (const char* srce, const char* dest, size_t buff) {
         return 1;
     }
     free(tmpch);
+    free(cmpch);
     return 0;
 }
 
 int main (int argc, char **argv) {
     
     char* fname = argv[0];
-    if (argc < 3) {
-        fprintf(stderr,"%s: invalid number of arguments\n", fname);
-        
-        return EXIT_FAILURE;
-    }
 
-    unsigned long buff = 1024*1024;
+    unsigned long buffsize = 1024*1024;
     int opt;
 
     while ((opt=getopt(argc,argv,"b:"))!=-1) {
         switch (opt) {
             case 'b':
-                if ((buff = buffparser(optarg)) == 0) {
+                if ((buffsize = buffparser(optarg)) == 0) {
                     fprintf(stderr,"%s: invalid buffer multiplier\n", fname);
                     return EXIT_FAILURE;
-                }                
+                }
+                
+                if (buffsize <= 0) {
+                    fprintf(stderr,"%s: invalid buffer size: %lu\n", fname,
+                            buffsize);
+                    return EXIT_FAILURE;
+                }
+                if (buffsize >= LONG_MAX) {
+                    fprintf(stderr,"%s: exorbitant buffer size: %lu\n", fname,
+                            buffsize);
+                    return EXIT_FAILURE;
+                }
+                                
                 break;
+            
             case '?':
                 if (optopt=='b') {
                     fprintf(stderr,"%s: invalid argument to -%c\n", fname,
                             optopt);
                     return EXIT_FAILURE;
                 }
+                fprintf(stderr, "Usage: %s [-t nsecs] [-n] name\n",
+                        argv[0]);
                 break;
+
         }
     }
 
-    if (buff<=0) {
-        fprintf(stderr,"%s: invalid Buffer Size: %lu\n", fname, buff);
+/*    if (argc < 3) {
+        fprintf(stderr,"%s: invalid number of arguments\n", fname);
+        
+        return EXIT_FAILURE;
+    } */
+
+    if (argv[optind] == NULL) {
+        fprintf(stderr,"%s: no source file specified\n", fname);
+        fprintf(stderr, "Usage: %s [-b <buffer>K/M/G] SOURCE DEST\n",
+                fname);
         return EXIT_FAILURE;
     }
-    
-    const char* srce = argv[optind];
-    const char* dest = argv[optind+1];
-    
+    if (argv[optind+1] == NULL) {
+        fprintf(stderr,"%s: no destination file specified\n", fname);
+        fprintf(stderr, "Usage: %s [-b <buffer>K/M/G] SOURCE DEST\n",
+                fname);
+        return EXIT_FAILURE;
+    }
     if (argv[optind+2]!=NULL) {
         fprintf(stderr,"%s: unexpected extra argument\n", argv[optind+2]);
+        fprintf(stderr, "Usage: %s [-b <buffer>K/M/G] SOURCE DEST\n",
+                fname);
         return EXIT_FAILURE;
     }
 
-    int failure = copy(srce, dest, buff); 
+    const char* srce = argv[optind];
+    const char* dest = argv[optind+1];
+
+    int failure = copy(srce, dest, buffsize); 
     if (failure) {
         return EXIT_FAILURE;
     }
