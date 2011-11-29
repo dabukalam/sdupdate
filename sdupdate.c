@@ -72,21 +72,20 @@ int copy (const char* srce, const char* dest, size_t buff) {
     int lastw;
     long position;
     int blocksize = 1;
-    int tmp = 0;
 
     do {
 
         lastw = fread (tmpch, 1, count, srcfile);
 
-        if (compare) {
-            fread (cmpch, 1, count, destfile);
+        if (compare || (fread (cmpch, 1, lastw, destfile))) {
+                        
         //compare corresponding blocks in src and dest and if equal skip
             if (memcmp(cmpch,tmpch,lastw)!=0) {
                 position = ftell(destfile);
                 fseek(destfile, position-count, SEEK_SET);
                 fwrite(tmpch, blocksize, lastw, destfile);
                 if (ferror(destfile)) {
-                    fprintf(stderr,"%s: file write error: %d: %s\n", dest, 
+                    fprintf(stderr,"%s: first file write error: %d: %s\n", dest, 
                             errno, strerror(errno));
                     return 1;
                  }   
