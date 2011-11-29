@@ -47,12 +47,17 @@ int copy (const char* srce, const char* dest, size_t buff) {
         return 1;
     }
     
+    int compare;
     
     FILE *destfile;
-    if (file_exists(dest))
+    if (file_exists(dest)) {
         destfile = fopen (dest,"r+b");
-    else
+        compare = 1;
+    }
+    else {
         destfile = fopen (dest,"wb");
+        compare = 0;
+    }
     
     if (destfile==NULL) {
         fprintf(stderr, "%s: file could not be read: %d: %s\n", dest, errno,
@@ -66,35 +71,44 @@ int copy (const char* srce, const char* dest, size_t buff) {
     long count = buff;
     int lastw;
     long position;
+    int blocksize = 1;
+
 
     do {
-        //read buff bytes into array of size buff for both src and dest
-        lastw = fread (tmpch, 1, count, srcfile);
-        fread (cmpch, 1, count, destfile);
-
+        if (compare) {
+            lastw = fread (tmpch, 1, count, srcfile);
+            fread (cmpch, 1, count, destfile);
         //compare corresponding blocks in src and dest and if equal skip
-        if (memcmp(cmpch,tmpch,lastw)!=0) {
-            printf("\nEntered mismatch loop\n");
-            printf("Source String = %s\n",tmpch);
-            printf("Dest String = %s\n\n",cmpch);
-            position = ftell(destfile);
-            printf("Got position of pointer\n");
-            fseek(destfile, position-count, SEEK_SET);
-            printf("Moved back a block for writing.\n");
-            fwrite(tmpch, 1, lastw, destfile);
-            printf("Wrote array to block\n\n");
-            printf("New Dest String = %s\n",cmpch);
-            if (ferror(destfile)) {
-                fprintf(stderr,"%s: file write error: %d: %s\n", dest, errno,
-                        strerror(errno));
-                return 1;
+            if (memcmp(cmpch,tmpch,lastw)!=0) {
+                printf("\nEntered mismatch loop\n");
+                printf("Source String = %s\n",tmpch);
+                printf("Dest String = %s\n\n",cmpch);
+                position = ftell(destfile);
+                printf("Position = %ld\n\n",position);
+                printf("Got position of pointer\n");
+                fseek(destfile, position-count, SEEK_SET);
+                printf("Moved back a block for writing.\n");
+                fwrite(tmpch, blocksize, lastw, destfile);
+                printf("Wrote array to block\n\n");
+                printf("New Dest String = %s\n",cmpch);
+                if (ferror(destfile)) {
+                    fprintf(stderr,"%s: file write error: %d: %s\n", dest, 
+                            errno, strerror(errno));
+                    return 1;
+                 }   
+            }   
+            else {
+                printf("Source String = %s\n",tmpch);
+                printf("Dest String = %s\n",cmpch);
+                printf("MATCH! SKIPPED!\n");   
             }
+
         }
         else {
-            printf("Source String = %s\n",tmpch);
-            printf("Dest String = %s\n",cmpch);
-            printf("MATCH! SKIPPED!\n");   
+            lastw = fread (tmpch, 1, count, srcfile);
+            fwrite(tmpch, blocksize, lastw, destfile);           
         }
+
 
     } while (lastw > 0);
 
