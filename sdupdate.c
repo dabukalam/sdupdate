@@ -6,15 +6,6 @@
 #include <unistd.h>
 #include <limits.h>
 
-/*int file_exists (const char* path) {
-    FILE* file;
-    if ((file = fopen(path,"r"))) {
-        fclose(file);
-        return 1;
-    }
-    return 0;
-}*/
-
 unsigned long buffparser (char* buff) {
     int size = strlen(buff);
     char lastch = buff[size-1];
@@ -49,7 +40,8 @@ int copy (const char* srce, const char* dest, size_t buffsize) {
     }
     
     FILE *destfile;
-
+    
+    //if cannot open r+b then file doesn't exist so open w+b (create it)
     if ((destfile = fopen (dest,"r+b")) == NULL)
         if ((destfile = fopen (dest,"w+b")) == NULL) {
             fprintf(stderr, "%s: file could not be read: %d: %s\n", dest, errno,
@@ -57,22 +49,6 @@ int copy (const char* srce, const char* dest, size_t buffsize) {
             return 1;
         }
 
-/*    if (file_exists(dest)) {
-        destfile = fopen (dest,"r+b");
-        compare = 1;
-    }
-    else {
-        destfile = fopen (dest,"w+b");
-        compare = 0;
-    }
-    
-    if (destfile==NULL) {
-        fprintf(stderr, "%s: file could not be read: %d: %s\n", dest, errno,
-                strerror(errno));
-        return 1;
-    }*/
-    
-    //buffer size of array
     char* tmpch;
     char* cmpch;
     if ( (tmpch = malloc(buffsize)) == NULL) {
@@ -93,9 +69,10 @@ int copy (const char* srce, const char* dest, size_t buffsize) {
 
         lastw = fread (tmpch, blocksize, buffsize, srcfile);
 
+        //if cmpch contains something then compare and write
         if (fread (cmpch, blocksize, lastw, destfile)) {
                         
-        //compare corresponding blocks in src and dest and if equal skip
+            //compare corresponding blocks in src and dest and if equal skip
             if (memcmp(cmpch,tmpch,lastw)!=0) {
                 printf("In compare loop\n");
                 fseek(destfile, -offset, SEEK_CUR);
@@ -104,21 +81,15 @@ int copy (const char* srce, const char* dest, size_t buffsize) {
                     fprintf(stderr,"%s: first file write error: %d: %s\n", dest, 
                             errno, strerror(errno));
                     return 1;
-                 }   
+                }   
             }   
-            else {
-                printf("Source String = %s\n",tmpch);
-                printf("Dest String = %s\n",cmpch);
-                printf("MATCH! SKIPPED!\n");   
-            }
         }
        
-        
-        else {
+        //if cmpch is empty then don't bother, just  
+        else
             fwrite(tmpch, blocksize, lastw, destfile);           
-        }
 
-
+    //on the last instance fread will have nothing left to read so lastw = 0
     } while (lastw > 0);
 
     if (ferror(srcfile)) {
@@ -173,6 +144,8 @@ int main (int argc, char **argv) {
                             buffsize);
                     return EXIT_FAILURE;
                 }
+                /* buffsize is used as a long later on so cannot be a value
+                   between l_max and lu_max */
                 if (buffsize >= LONG_MAX) {
                     fprintf(stderr,"%s: exorbitant buffer size: %lu\n", fname,
                             buffsize);
@@ -182,6 +155,8 @@ int main (int argc, char **argv) {
                 break;
             
             case '?':
+                /*  if -b is not given a value then getopt returns '?' and stores
+                    b in optopt */
                 if (optopt=='b') {
                     fprintf(stderr,"%s: invalid argument to -%c\n", fname,
                             optopt);
@@ -193,12 +168,6 @@ int main (int argc, char **argv) {
 
         }
     }
-
-/*    if (argc < 3) {
-        fprintf(stderr,"%s: invalid number of arguments\n", fname);
-        
-        return EXIT_FAILURE;
-    } */
 
     if (argv[optind] == NULL) {
         fprintf(stderr,"%s: no source file specified\n", fname);
@@ -223,9 +192,8 @@ int main (int argc, char **argv) {
     const char* dest = argv[optind+1];
 
     int failure = copy(srce, dest, buffsize); 
-    if (failure) {
+    if (failure)
         return EXIT_FAILURE;
-    }
 
     return EXIT_SUCCESS;    
 }
