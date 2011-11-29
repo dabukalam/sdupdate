@@ -7,7 +7,7 @@
 
 int file_exists (const char* path) {
     FILE* file;
-    if (file = fopen(path,"r")) {
+    if ((file = fopen(path,"r"))) {
         fclose(file);
         return 1;
     }
@@ -72,25 +72,19 @@ int copy (const char* srce, const char* dest, size_t buff) {
     int lastw;
     long position;
     int blocksize = 1;
-
+    int tmp = 0;
 
     do {
+
+        lastw = fread (tmpch, 1, count, srcfile);
+
         if (compare) {
-            lastw = fread (tmpch, 1, count, srcfile);
             fread (cmpch, 1, count, destfile);
         //compare corresponding blocks in src and dest and if equal skip
             if (memcmp(cmpch,tmpch,lastw)!=0) {
-                printf("\nEntered mismatch loop\n");
-                printf("Source String = %s\n",tmpch);
-                printf("Dest String = %s\n\n",cmpch);
                 position = ftell(destfile);
-                printf("Position = %ld\n\n",position);
-                printf("Got position of pointer\n");
                 fseek(destfile, position-count, SEEK_SET);
-                printf("Moved back a block for writing.\n");
                 fwrite(tmpch, blocksize, lastw, destfile);
-                printf("Wrote array to block\n\n");
-                printf("New Dest String = %s\n",cmpch);
                 if (ferror(destfile)) {
                     fprintf(stderr,"%s: file write error: %d: %s\n", dest, 
                             errno, strerror(errno));
@@ -102,10 +96,10 @@ int copy (const char* srce, const char* dest, size_t buff) {
                 printf("Dest String = %s\n",cmpch);
                 printf("MATCH! SKIPPED!\n");   
             }
-
         }
+       
+        
         else {
-            lastw = fread (tmpch, 1, count, srcfile);
             fwrite(tmpch, blocksize, lastw, destfile);           
         }
 
@@ -126,12 +120,12 @@ int copy (const char* srce, const char* dest, size_t buff) {
         return 1;
     }
 
-/*    if (ferror(destfile)) {
+    if (ferror(destfile)) {
         fprintf(stderr,"%s: file write error: %d: %s\n", dest, errno,
                 strerror(errno));
         
         return 1;
-    }*/
+    }
 
     if (fclose(destfile)) {
         fprintf(stderr,"%s: error closing file: %d: %s\n", dest, errno,
