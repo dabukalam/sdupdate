@@ -74,7 +74,6 @@ int copy (const char* srce, const char* dest, size_t buffsize) {
                         
             //compare corresponding blocks in src and dest and if equal skip
             if (memcmp(cmpch,tmpch,lastw)!=0) {
-                printf("In compare loop\n");
                 fseek(destfile, -offset, SEEK_CUR);
                 fwrite(tmpch, blocksize, lastw, destfile);
                 if (ferror(destfile)) {
@@ -162,8 +161,8 @@ int main (int argc, char **argv) {
                             optopt);
                     return EXIT_FAILURE;
                 }
-                fprintf(stderr, "Usage: %s [-t nsecs] [-n] name\n",
-                        argv[0]);
+                fprintf(stderr, "Usage: %s [-b <buffer>K/M/G] SOURCE DEST\n",
+                        fname);
                 break;
 
         }
