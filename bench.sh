@@ -80,7 +80,7 @@ copycheck
 TIMEFORMAT='Time taken to clear SD card: %E seconds'
 time {
     echo "Clearing card with dd..."
-    dd bs=1M count=11 if=/dev/zero of=$dev
+    dd bs=1K count=$size if=/dev/zero of=$dev
     sync
 }
 
