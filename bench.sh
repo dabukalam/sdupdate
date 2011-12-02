@@ -33,7 +33,7 @@ function lipsum {
 function copycheck {
     echo "Checking Copy..."
 
-    if cmp -n $(du -b lipsum | awk '{ print $1 }') lipsum /dev/mmcblk0; then
+    if cmp -n $(($size * 1024)) lipsum $dev; then
         echo "OK."
     else
         echo "Bad Copy"
