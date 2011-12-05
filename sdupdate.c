@@ -1,3 +1,20 @@
+/*
+ *    Copyright (C) 2011 Codethink Ltd.
+ *
+ *    This program is free software; you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License Version 2 as
+ *    published by the Free Software Foundation.
+ *
+ *    This program is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
+ *
+ *    You should have received a copy of the GNU General Public License along
+ *    with this program; if not, write to the Free Software Foundation, Inc.,
+ *    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
 #define _POSIX_C_SOURCE 2
 #include <stdio.h>
 #include <string.h>
@@ -5,6 +22,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <limits.h>
+#include <sys/ioctl.h>
 
 unsigned long buffparser (char* buff) {
     int size = strlen(buff);
@@ -30,10 +48,53 @@ unsigned long buffparser (char* buff) {
     }
 }
 
-int copy (const char* srce, const char* dest, size_t buffsize) {
+char* big (size_t buffsize) {
+    char sizes[] = {'K', 'M', 'G', 'T', 'E', 'P', 'Z', 'Y'};
+    char* size = malloc(5);
+    int count = -1; 
+    unsigned long long buff = buffsize;
+    while (buff > 1024) {
+        buff /= 1024;
+        count++;
+    }   
+    if (count == -1) {
+        sprintf(size, "%d ", (int) buff);
+        return size;
+    }   
+    else {
+        sprintf(size, "%d%c", (int) buff, sizes[count]);
+        return size;
+    }   
+}
+
+void far (long where, long end, size_t buffsize) {
+    struct winsize w;
+    int i;
+    int count = 0;
+
+    int perc = where*100/end;
+
+    ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+    for (i = 0; i < w.ws_col; i++)
+        printf("\b");
+
+    printf("%5sB synced [>", big(where));
+    for (i = 0; i < (w.ws_col-24)*perc/100; i++) {
+        printf("\b");
+        printf("=>");
+        count++;            
+    }
+    for (i = 0; i < (w.ws_col-24)-count; i++)
+        printf(" ");
+    printf("] %2d%%  ", perc);
+
+    fflush(stdout);
+}
+
+int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
     
     FILE *srcfile = fopen (srce,"rb");
-    if (srcfile==NULL) {
+    if (srcfile == NULL) {
         fprintf(stderr, "%s: file could not be read: %d: %s\n", srce, errno,
                 strerror(errno));
         return 1;
@@ -65,6 +126,11 @@ int copy (const char* srce, const char* dest, size_t buffsize) {
     int lastw;
     int blocksize = 1;
 
+    fseek(srcfile, 0, SEEK_END);
+    long end = ftell(srcfile);
+    rewind(srcfile);
+    long where = 0;
+
     do {
 
         lastw = fread (tmpch, blocksize, buffsize, srcfile);
@@ -73,7 +139,8 @@ int copy (const char* srce, const char* dest, size_t buffsize) {
         if (fread (cmpch, blocksize, lastw, destfile)) {
                         
             //compare corresponding blocks in src and dest and if equal skip
-            if (memcmp(cmpch,tmpch,lastw)!=0) {
+            if (memcmp(cmpch,tmpch,lastw) != 0) {
+                //rewind destfile to where it was before comparison
                 fseek(destfile, -offset, SEEK_CUR);
                 fwrite(tmpch, blocksize, lastw, destfile);
                 if (ferror(destfile)) {
@@ -87,6 +154,11 @@ int copy (const char* srce, const char* dest, size_t buffsize) {
         //if cmpch is empty then don't bother, just  
         else
             fwrite(tmpch, blocksize, lastw, destfile);           
+
+        if (progress) {
+            where += buffsize;
+            far(where, end, buffsize);
+        }
 
     //on the last instance fread will have nothing left to read so lastw = 0
     } while (lastw > 0);
@@ -130,7 +202,9 @@ int main (int argc, char **argv) {
     unsigned long buffsize = 1024*1024;
     int opt;
 
-    while ((opt=getopt(argc,argv,"b:"))!=-1) {
+    int progress = 0;
+
+    while ((opt = getopt(argc,argv,"pb:")) != -1) {
         switch (opt) {
             case 'b':
                 if ((buffsize = buffparser(optarg)) == 0) {
@@ -153,10 +227,14 @@ int main (int argc, char **argv) {
                                 
                 break;
             
+            case 'p':
+                progress = 1;
+                break;
+
             case '?':
                 /*  if -b is not given a value then getopt returns '?' and stores
                     b in optopt */
-                if (optopt=='b') {
+                if (optopt == 'b') {
                     fprintf(stderr,"%s: invalid argument to -%c\n", fname,
                             optopt);
                     return EXIT_FAILURE;
@@ -180,7 +258,7 @@ int main (int argc, char **argv) {
                 fname);
         return EXIT_FAILURE;
     }
-    if (argv[optind+2]!=NULL) {
+    if (argv[optind+2] != NULL) {
         fprintf(stderr,"%s: unexpected extra argument\n", argv[optind+2]);
         fprintf(stderr, "Usage: %s [-b <buffer>K/M/G] SOURCE DEST\n",
                 fname);
@@ -190,7 +268,7 @@ int main (int argc, char **argv) {
     const char* srce = argv[optind];
     const char* dest = argv[optind+1];
 
-    int failure = copy(srce, dest, buffsize); 
+    int failure = copy(srce, dest, buffsize, progress); 
     if (failure)
         return EXIT_FAILURE;
 

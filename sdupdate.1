@@ -1,0 +1,28 @@
+.TH SDUPDATE "1" "November 2011" "Baserock 0.0.1" "User Commands"
+.SH NAME
+sdupdate \- write a file to an SD card
+.SH SYNOPSIS
+.B sdupdate
+[\fI-b SIZE\fR] [\fI-p\fR] \fISOURCE\fR \fITARGET\fR
+.PP
+.SH DESCRIPTION
+.PP
+Copy SOURCE file to TARGET file
+.PP
+sdupdate is intended to be a limited tool with the sole purpose of copying a file to an SD card faster than other tools. It does this by comparing blocks before writing and only writing if they're not the same.
+.PP
+sdupdate should be used with extreme caution as it overwrites the destination by default without prompting the user. It can easily break a system if used incorrectly.
+.PP
+Target intended to be an SD card device, commonly /dev/mmcblk0.
+.SH OPTIONS
+.TP
+-b SIZE
+Copy using buffer size SIZE in bytes.
+Size can be specified using a K, M, or G suffix.
+.TP
+-p
+Display progress.
+.SH EXAMPLE
+sdupdate -b 10M -p linuxdistro.iso /dev/mmcblk0
+.SH BUGS
+You can report bugs at baserock-dev@baserock.org

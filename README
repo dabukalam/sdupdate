@@ -1,0 +1,18 @@
+sdupdate - A fast lightweight SD card image updater
+http://wiki.baserock.org
+
+Dependencies:
+
+    none at present.
+
+To Install:
+
+    make
+    sudo make install
+
+See manpage for information on how to run.
+
+
+To Test:
+
+    make check
