@@ -50,13 +50,18 @@ unsigned long buffparser (char* buff) {
 
 char* big (size_t buffsize) {
     char sizes[] = {'K', 'M', 'G', 'T', 'E', 'P', 'Z', 'Y'};
-    char* size = malloc(5);
+    char* size = malloc(6);
     int count = -1; 
     unsigned long long buff = buffsize;
-    while (buff > 1024) {
+
+    while (buff >= 1024) {
         buff /= 1024;
         count++;
-    }   
+    }  
+
+    if (buff > 9999)
+        return NULL;
+
     if (count == -1) {
         sprintf(size, "%d ", (int) buff);
         return size;
@@ -67,7 +72,7 @@ char* big (size_t buffsize) {
     }   
 }
 
-void far (long where, long end, size_t buffsize) {
+int far (long where, long end, size_t buffsize) {
     struct winsize w;
     int i;
     int count = 0;
@@ -77,8 +82,12 @@ void far (long where, long end, size_t buffsize) {
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
     for (i = 0; i < w.ws_col; i++)
         printf("\b");
+    
+    char* currsize;
+    if ((currsize = big(where)) == NULL)
+        return 1;
 
-    printf("%5sB synced [>", big(where));
+    printf("%5sB synced [>", currsize);
     for (i = 0; i < (w.ws_col-24)*perc/100; i++) {
         printf("\b");
         printf("=>");
@@ -86,9 +95,11 @@ void far (long where, long end, size_t buffsize) {
     }
     for (i = 0; i < (w.ws_col-24)-count; i++)
         printf(" ");
-    printf("] %2d%%  ", perc);
+    printf("] %3d%%  ", perc);
 
     fflush(stdout);
+
+    return 0;
 }
 
 int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
@@ -157,7 +168,11 @@ int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
 
         if (progress) {
             where += buffsize;
-            far(where, end, buffsize);
+            if (far(where, end, buffsize)) {
+                fprintf(stderr,"progress bar failure: %d: %s\n", errno,
+                        strerror(errno));
+                return 1;
+            }
         }
 
     //on the last instance fread will have nothing left to read so lastw = 0
