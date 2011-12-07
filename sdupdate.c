@@ -254,7 +254,7 @@ int main (int argc, char **argv) {
                             optopt);
                     return EXIT_FAILURE;
                 }
-                fprintf(stderr, "Usage: %s [-b <buffer>K/M/G] SOURCE DEST\n",
+                fprintf(stderr, "Usage: %s [OPTIONS] SOURCE DEST\n",
                         fname);
                 break;
 
@@ -263,19 +263,19 @@ int main (int argc, char **argv) {
 
     if (argv[optind] == NULL) {
         fprintf(stderr,"%s: no source file specified\n", fname);
-        fprintf(stderr, "Usage: %s [-b <buffer>K/M/G] SOURCE DEST\n",
+        fprintf(stderr, "Usage: %s [OPTIONS] SOURCE DEST\n",
                 fname);
         return EXIT_FAILURE;
     }
     if (argv[optind+1] == NULL) {
         fprintf(stderr,"%s: no destination file specified\n", fname);
-        fprintf(stderr, "Usage: %s [-b <buffer>K/M/G] SOURCE DEST\n",
+        fprintf(stderr, "Usage: %s [OPTIONS] SOURCE DEST\n",
                 fname);
         return EXIT_FAILURE;
     }
     if (argv[optind+2] != NULL) {
         fprintf(stderr,"%s: unexpected extra argument\n", argv[optind+2]);
-        fprintf(stderr, "Usage: %s [-b <buffer>K/M/G] SOURCE DEST\n",
+        fprintf(stderr, "Usage: %s [OPTIONS] SOURCE DEST\n",
                 fname);
         return EXIT_FAILURE;
     }
