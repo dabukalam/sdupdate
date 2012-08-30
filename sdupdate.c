@@ -214,8 +214,9 @@ int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
             range.minlen = trimlen;
             
             fprintf(stderr, "zero range %llu - %llu\n", (unsigned long long)trimstart, (unsigned long long)trimlen);
-            
-            if (ioctl(fileno(destfile), FITRIM, &range) != 0) {              
+                        
+            if (ioctl(fileno(destfile), FITRIM, &range)) {
+                
                 if (dst_is_reg) {
                     if (fseek(destfile, trimlen, SEEK_CUR)){
                         fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
@@ -223,12 +224,23 @@ int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
                         return 1;
                     }   
                 }
-                else while(trimlen--) {
-                    fputc(0, destfile);
-                    if (ferror(destfile)) {
-                        fprintf(stderr,"%s: first file put error: %d: %s\n", dest, 
-                                errno, strerror(errno));
-                        return 1;
+                else {
+                    
+                    memset(cmpch, 0, buffsize);
+                    
+                    while(trimlen) {
+                        
+                        size_t zeros = (buffsize < trimlen)?buffsize:trimlen;
+                        
+                        fwrite(cmpch, blocksize, zeros, destfile);
+                        
+                        if (ferror(destfile)) {
+                            fprintf(stderr,"%s: first file write error: %d: %s %llu\n", dest,
+                                    errno, strerror(errno), (unsigned long long)trimlen);
+                            return 1;
+                        }
+                        
+                        trimlen -= zeros;
                     }
                 }
             }
