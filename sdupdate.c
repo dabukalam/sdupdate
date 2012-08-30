@@ -135,6 +135,73 @@ int all_zero(const char* data, size_t size)
 }
 
 
+int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len, const char* dest, FILE *destfile, int sparse, int blockdevice)
+{
+#if defined(__linux__)
+    if (blockdevice)
+    {
+        struct fstrim_range range;
+        
+        range.start = start;
+        range.len = len;
+        range.minlen = len;
+        
+        if (!ioctl(fileno(destfile), FITRIM, &range))
+            return 0;
+    }
+#endif
+    
+    if (fseek(destfile, start, SEEK_SET)){
+        fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
+                errno, strerror(errno));
+        return 1;
+    }
+
+    if (sparse)
+    {
+        if (fseek(destfile, len, SEEK_CUR)){
+            fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
+                    errno, strerror(errno));
+            return 1;
+        }
+        
+        return 0;
+    }
+    
+    
+    memset(tempmem, 0, tempmemsize);
+    
+    while(len) {
+        
+        size_t zeros = (tempmemsize < len)?tempmemsize:len;
+        
+        long d = ftell(destfile);
+        
+        fprintf(stderr, "file pos %lu %lu\n", d, zeros);
+        
+        fwrite(tempmem, 1, zeros, destfile);
+        
+        if (ferror(destfile)) {
+            fprintf(stderr,"%s: first file write error: %d: %s %llu\n", dest,
+                    errno, strerror(errno), (unsigned long long)len);
+            return 1;
+        }
+        
+        fflush(destfile);
+        
+        if (ferror(destfile)) {
+            fprintf(stderr,"%s: first file flush error: %d: %s %llu\n", dest,
+                    errno, strerror(errno), (unsigned long long)len);
+            return 1;
+        }
+        
+        len -= zeros;
+    }
+    
+    return 0;
+}
+
+
 int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
     
     FILE *srcfile = fopen (srce,"rb");
@@ -144,10 +211,13 @@ int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
         return 1;
     }
     
+    int sparse = 0;
+    
     FILE *destfile;
     
     //if cannot open r+b then file doesn't exist so open w+b (create it)
     if ((destfile = fopen (dest,"r+b")) == NULL)
+        sparse = 1;
         if ((destfile = fopen (dest,"w+b")) == NULL) {
             fprintf(stderr, "%s: file could not be read: %d: %s\n", dest, errno,
                     strerror(errno));
@@ -176,112 +246,69 @@ int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
     long where = 0;
     
 
-#if defined(__linux__)   
-    int has_trim = 0;
-    uint64_t trimstart = 0;
-    uint64_t trimlen = 0;
-    
-    int dst_is_reg = 0;
+    uint64_t zerosstart = 0;
+    uint64_t zeroslen = 0;
+        
+    int blockdevice = 0;
     
     struct stat dststat;
     
     if (!fstat(fileno(destfile), &dststat)) {
-        dst_is_reg = S_ISREG(dststat.st_mode);
-        
-        has_trim = dst_is_reg || S_ISBLK(dststat.st_mode);
+        sparse = sparse && S_ISREG(dststat.st_mode); //Not really required, but makes me feel better.
+        blockdevice = S_ISBLK(dststat.st_mode);
     }
     
-    
-#endif
 
     do {
 
         lastw = fread (tmpch, blocksize, buffsize, srcfile);
 
-#if defined(__linux__)
-        if (has_trim && lastw!=0 && all_zero(tmpch, lastw)) {
+        if ((sparse || blockdevice) && lastw!=0 && all_zero(tmpch, lastw)) {
 
-            if (!trimlen)
-                trimstart = where;
+            if (!zeroslen)
+                zerosstart = where;
             
-            trimlen += lastw;
+            zeroslen += lastw;
         }
-        else if (trimlen) {
-            struct fstrim_range range;
+        else if (zeroslen) {
             
-            range.start = trimstart;
-            range.len = trimlen;
-            range.minlen = trimlen;
+            if (write_zeros(cmpch, buffsize, zerosstart, zeroslen, dest, destfile, sparse, blockdevice))
+                return 1;
             
-            fprintf(stderr, "zero range %llu - %llu\n", (unsigned long long)trimstart, (unsigned long long)trimlen);
-                        
-            if (ioctl(fileno(destfile), FITRIM, &range)) {
-                
-                if (dst_is_reg) {
-                    if (fseek(destfile, trimlen, SEEK_CUR)){
-                        fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
+            zerosstart = 0;
+            zeroslen = 0;
+        }
+        
+        if (!zeroslen) {
+
+            //if cmpch contains something then compare and write
+            if (fread (cmpch, blocksize, lastw, destfile) == lastw) {
+                            
+                //compare corresponding blocks in src and dest and if equal skip
+                if (memcmp(cmpch,tmpch,lastw) != 0) {
+                    //rewind destfile to where it was before comparison
+                    fseek(destfile, -offset, SEEK_CUR);
+                    fwrite(tmpch, blocksize, lastw, destfile);
+                    if (ferror(destfile)) {
+                        fprintf(stderr,"%s: first file write error: %d: %s\n", dest, 
                                 errno, strerror(errno));
                         return 1;
                     }   
-                }
-                else {
-                    
-                    memset(cmpch, 0, buffsize);
-                    
-                    while(trimlen) {
-                        
-                        size_t zeros = (buffsize < trimlen)?buffsize:trimlen;
-                        
-                        fwrite(cmpch, blocksize, zeros, destfile);
-                        
-                        if (ferror(destfile)) {
-                            fprintf(stderr,"%s: first file write error: %d: %s %llu\n", dest,
-                                    errno, strerror(errno), (unsigned long long)trimlen);
-                            return 1;
-                        }
-                        
-                        trimlen -= zeros;
-                    }
-                }
+                }   
             }
-            
-            trimstart = 0;
-            trimlen = 0;
-        }
-        
-        if (!trimlen) {
-#endif
-
-        //if cmpch contains something then compare and write
-        if (fread (cmpch, blocksize, lastw, destfile) == lastw) {
-                        
-            //compare corresponding blocks in src and dest and if equal skip
-            if (memcmp(cmpch,tmpch,lastw) != 0) {
-                //rewind destfile to where it was before comparison
-                fseek(destfile, -offset, SEEK_CUR);
-                fwrite(tmpch, blocksize, lastw, destfile);
+           
+            //if cmpch is empty then don't bother, just  
+            else
+            {
+                fwrite(tmpch, blocksize, lastw, destfile); 
                 if (ferror(destfile)) {
                     fprintf(stderr,"%s: first file write error: %d: %s\n", dest, 
                             errno, strerror(errno));
                     return 1;
-                }   
-            }   
-        }
-       
-        //if cmpch is empty then don't bother, just  
-        else
-        {
-            fwrite(tmpch, blocksize, lastw, destfile); 
-            if (ferror(destfile)) {
-                fprintf(stderr,"%s: first file write error: %d: %s\n", dest, 
-                        errno, strerror(errno));
-                return 1;
+                }
             }
-        }
             
-#if defined(__linux__)
         }
-#endif
 
         if (progress) {
             where += lastw;
