@@ -19,10 +19,18 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/stat.h> 
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdint.h>
 #include <limits.h>
 #include <sys/ioctl.h>
+
+
+#if defined(__linux__)   
+#include <linux/fs.h>
+#endif
+
 
 unsigned long buffparser (char* buff) {
     int size = strlen(buff);
@@ -72,7 +80,7 @@ char* big (size_t buffsize) {
     }   
 }
 
-int far (long where, long end, size_t buffsize) {
+int far (long where, long end) {
     struct winsize w;
     int i;
     int count = 0;
@@ -101,6 +109,31 @@ int far (long where, long end, size_t buffsize) {
 
     return 0;
 }
+
+
+int all_zero(const char* data, size_t size)
+{
+    int chunks = size / sizeof(uint64_t);
+    
+    while(chunks--)
+    {
+        if (*(uint64_t*)data != 0)
+            return 0;
+            
+        data += sizeof(uint64_t);
+    }
+    
+    int bytes = size % sizeof(uint64_t);
+    
+    for(int n = 0; n < bytes; ++n)
+    {
+        if (data[n] != 0)
+            return 0;
+    }
+    
+    return 1;
+}
+
 
 int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
     
@@ -141,13 +174,74 @@ int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
     long end = ftell(srcfile);
     rewind(srcfile);
     long where = 0;
+    
+
+#if defined(__linux__)   
+    int has_trim = 0;
+    uint64_t trimstart = 0;
+    uint64_t trimlen = 0;
+    
+    int dst_is_reg = 0;
+    
+    struct stat dststat;
+    
+    if (!fstat(fileno(destfile), &dststat)) {
+        dst_is_reg = S_ISREG(dststat.st_mode);
+        
+        has_trim = dst_is_reg || S_ISBLK(dststat.st_mode);
+    }
+    
+    
+#endif
 
     do {
 
         lastw = fread (tmpch, blocksize, buffsize, srcfile);
 
+#if defined(__linux__)
+        if (has_trim && lastw!=0 && all_zero(tmpch, lastw)) {
+
+            if (!trimlen)
+                trimstart = where;
+            
+            trimlen += lastw;
+        }
+        else if (trimlen) {
+            struct fstrim_range range;
+            
+            range.start = trimstart;
+            range.len = trimlen;
+            range.minlen = trimlen;
+            
+            fprintf(stderr, "zero range %llu - %llu\n", (unsigned long long)trimstart, (unsigned long long)trimlen);
+            
+            if (ioctl(fileno(destfile), FITRIM, &range) != 0) {              
+                if (dst_is_reg) {
+                    if (fseek(destfile, trimlen, SEEK_CUR)){
+                        fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
+                                errno, strerror(errno));
+                        return 1;
+                    }   
+                }
+                else while(trimlen--) {
+                    fputc(0, destfile);
+                    if (ferror(destfile)) {
+                        fprintf(stderr,"%s: first file put error: %d: %s\n", dest, 
+                                errno, strerror(errno));
+                        return 1;
+                    }
+                }
+            }
+            
+            trimstart = 0;
+            trimlen = 0;
+        }
+        
+        if (!trimlen) {
+#endif
+
         //if cmpch contains something then compare and write
-        if (fread (cmpch, blocksize, lastw, destfile)) {
+        if (fread (cmpch, blocksize, lastw, destfile) == lastw) {
                         
             //compare corresponding blocks in src and dest and if equal skip
             if (memcmp(cmpch,tmpch,lastw) != 0) {
@@ -164,11 +258,22 @@ int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
        
         //if cmpch is empty then don't bother, just  
         else
-            fwrite(tmpch, blocksize, lastw, destfile);           
+        {
+            fwrite(tmpch, blocksize, lastw, destfile); 
+            if (ferror(destfile)) {
+                fprintf(stderr,"%s: first file write error: %d: %s\n", dest, 
+                        errno, strerror(errno));
+                return 1;
+            }
+        }
+            
+#if defined(__linux__)
+        }
+#endif
 
         if (progress) {
-            where += buffsize;
-            if (far(where, end, buffsize)) {
+            where += lastw;
+            if (far(where, end)) {
                 fprintf(stderr,"progress bar failure: %d: %s\n", errno,
                         strerror(errno));
                 return 1;
