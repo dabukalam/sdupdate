@@ -15,7 +15,14 @@
  *    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#if defined(__linux__) 
+#define _GNU_SOURCE
+#include <linux/fs.h>
+#include <linux/falloc.h>
+#include <fcntl.h>
+#else
 #define _POSIX_C_SOURCE 2
+#endif
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -26,10 +33,6 @@
 #include <limits.h>
 #include <sys/ioctl.h>
 
-
-#if defined(__linux__)   
-#include <linux/fs.h>
-#endif
 
 
 unsigned long buffparser (char* buff) {
@@ -135,11 +138,19 @@ int all_zero(const char* data, size_t size)
 }
 
 
-int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len, const char* dest, FILE *destfile, int sparse, int blockdevice)
+int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len, const char* dest, FILE *destfile, mode_t dstmode, int dstisnew)
 {
 #if defined(__linux__)
-    if (blockdevice)
+    if (S_ISREG(dstmode))
     {
+        /*
+         * If you can trim, you should. If you are punching a hole instead anyway, why?
+         * Well it's about wear leveling.
+         * By doing this the blocks are freed for the device to reuse to reduce wear.
+         * The filesystem has no knowledge of block wear. It just has free and used blocks.
+         * It will hand back blocks regardless of wear.
+         * In future it may automatically pass free blocks to the device, but today it doesn't.
+         */
         struct fstrim_range range;
         
         range.start = start;
@@ -147,6 +158,17 @@ int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len,
         range.minlen = len;
         
         if (!ioctl(fileno(destfile), FITRIM, &range))
+            return 0;
+    }
+    
+    if (S_ISBLK(dstmode))
+    {
+        uint64_t range[2];
+        
+        range[0] = start;
+        range[1] = len;
+        
+        if (!ioctl(fileno(destfile), BLKDISCARD, &range))
             return 0;
     }
 #endif
@@ -157,13 +179,23 @@ int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len,
         return 1;
     }
 
-    if (sparse)
+    if (S_ISREG(dstmode))
     {
+         if (!dstisnew) {
+            int e = fallocate(fileno(destfile), FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE, start, len);
+            
+            if (e) {
+                fprintf(stderr,"%s: file fallocate(syscall) error: %d\n", dest, e);
+                return 1;
+            }
+        }
+        
         if (fseek(destfile, len, SEEK_CUR)){
             fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
                     errno, strerror(errno));
             return 1;
         }
+    
         
         return 0;
     }
@@ -174,11 +206,7 @@ int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len,
     while(len) {
         
         size_t zeros = (tempmemsize < len)?tempmemsize:len;
-        
-        long d = ftell(destfile);
-        
-        fprintf(stderr, "file pos %lu %lu\n", d, zeros);
-        
+                
         fwrite(tempmem, 1, zeros, destfile);
         
         if (ferror(destfile)) {
@@ -211,13 +239,13 @@ int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
         return 1;
     }
     
-    int sparse = 0;
+    int newfile = 0;
     
     FILE *destfile;
     
     //if cannot open r+b then file doesn't exist so open w+b (create it)
     if ((destfile = fopen (dest,"r+b")) == NULL)
-        sparse = 1;
+        newfile = 1;
         if ((destfile = fopen (dest,"w+b")) == NULL) {
             fprintf(stderr, "%s: file could not be read: %d: %s\n", dest, errno,
                     strerror(errno));
@@ -248,22 +276,24 @@ int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
 
     uint64_t zerosstart = 0;
     uint64_t zeroslen = 0;
-        
-    int blockdevice = 0;
+    
     
     struct stat dststat;
     
-    if (!fstat(fileno(destfile), &dststat)) {
-        sparse = sparse && S_ISREG(dststat.st_mode); //Not really required, but makes me feel better.
-        blockdevice = S_ISBLK(dststat.st_mode);
+    if (fstat(fileno(destfile), &dststat)) {
+        fprintf(stderr,"%s: file stat error: %d: %s\n", srce, errno,
+                strerror(errno));
+        return 1;
     }
+    
+    int zeroaware = S_ISBLK(dststat.st_mode) || S_ISREG(dststat.st_mode);
     
 
     do {
 
         lastw = fread (tmpch, blocksize, buffsize, srcfile);
 
-        if ((sparse || blockdevice) && lastw!=0 && all_zero(tmpch, lastw)) {
+        if (zeroaware && lastw!=0 && all_zero(tmpch, lastw)) {
 
             if (!zeroslen)
                 zerosstart = where;
@@ -272,7 +302,7 @@ int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
         }
         else if (zeroslen) {
             
-            if (write_zeros(cmpch, buffsize, zerosstart, zeroslen, dest, destfile, sparse, blockdevice))
+            if (write_zeros(cmpch, buffsize, zerosstart, zeroslen, dest, destfile, dststat.st_mode, newfile))
                 return 1;
             
             zerosstart = 0;
