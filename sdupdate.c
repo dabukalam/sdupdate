@@ -175,40 +175,37 @@ int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len,
     
 
     if (S_ISREG(dstmode)) {
-        int dstfileno = fileno(destfile);
-
-        if (!dstisnew)
-            goto zerosfallback;
+        if (dstisnew) {
+            int dstfileno = fileno(destfile);
         
-        off_t r = lseek(dstfileno, start+len, SEEK_SET);
-        
-        if (r != start+len) {
-            fprintf(stderr,"%s: file seek error:\n", dest);
-            return 1;
-        }
-        
-        r = lseek(dstfileno, start+len-1, SEEK_SET);
-        
-        if (r != start+len-1) {
-            fprintf(stderr,"%s: file seek error:\n", dest);
-            return 1;
-        }
-        
-        char c = 0;
-        
-        if (write(dstfileno, &c, 1) != 1) {
-            fprintf(stderr,"%s: file write error:\n", dest);
-            return 1;
+            off_t r = lseek(dstfileno, start+len, SEEK_SET);
             
+            if (r != start+len) {
+                fprintf(stderr,"%s: file seek error:\n", dest);
+                return 1;
+            }
+            
+            r = lseek(dstfileno, start+len-1, SEEK_SET);
+            
+            if (r != start+len-1) {
+                fprintf(stderr,"%s: file seek error:\n", dest);
+                return 1;
+            }
+            
+            char c = 0;
+            
+            if (write(dstfileno, &c, 1) != 1) {
+                fprintf(stderr,"%s: file write error:\n", dest);
+                return 1;
+                
+            }
+            
+            fseek(destfile, start+len, SEEK_SET);
+            
+            return 0;
         }
-        
-        fseek(destfile, start+len, SEEK_SET);
-        
-        return 0;
     }
     
-    zerosfallback:
-
     if (fseek(destfile, start, SEEK_SET)){
         fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
                 errno, strerror(errno));
