@@ -112,12 +112,10 @@ int far (long where, long end) {
 }
 
 
-int all_zero(const char* data, size_t size)
-{
+int all_zero(const char* data, size_t size) {
     int chunks = size / sizeof(uint64_t);
     
-    while(chunks--)
-    {
+    while(chunks--) {
         if (*(uint64_t*)data != 0)
             return 0;
             
@@ -126,8 +124,7 @@ int all_zero(const char* data, size_t size)
     
     int bytes = size % sizeof(uint64_t);
     
-    for(int n = 0; n < bytes; ++n)
-    {
+    for(int n = 0; n < bytes; ++n) {
         if (data[n] != 0)
             return 0;
     }
@@ -136,20 +133,103 @@ int all_zero(const char* data, size_t size)
 }
 
 
-int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len, const char* dest, FILE *destfile, mode_t dstmode, int dstisnew)
-{ 
+int write_actural_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len, const char* dest, FILE *destfile) {
+    
+    if (fseek(destfile, start, SEEK_SET)){
+        fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
+                errno, strerror(errno));
+        return 1;
+    }
+    
+    memset(tempmem, 0, tempmemsize);
+    
+    while(len) {
+        
+        size_t zeros = (tempmemsize < len)?tempmemsize:len;
+                
+        fwrite(tempmem, 1, zeros, destfile);
+        
+        if (ferror(destfile)) {
+            fprintf(stderr,"%s: first file write error: %d: %s %llu\n", dest,
+                    errno, strerror(errno), (unsigned long long)len);
+            return 1;
+        }
+        
+        fflush(destfile);
+        
+        if (ferror(destfile)) {
+            fprintf(stderr,"%s: first file flush error: %d: %s %llu\n", dest,
+                    errno, strerror(errno), (unsigned long long)len);
+            return 1;
+        }
+        
+        len -= zeros;
+    }
+    
+    return 0;
+}
+
+
+int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len, const char* dest, FILE *destfile, mode_t dstmode, int dstisnew) {
     fprintf(stderr, "write_zeros %llu -> %llu\n", (unsigned long long)start, (unsigned long long)start+len );
     
 #if defined(__linux__)    
-    if (S_ISBLK(dstmode))
-    {
-        uint64_t range[2];
+    if (S_ISBLK(dstmode)) {
+        static size_t sectorsize = 0;
         
-        range[0] = start;
-        range[1] = len;
+        int fd = fileno(destfile);
+                
+        if (!sectorsize) {
+            int e = ioctl(fd, BLKSSZGET, &sectorsize);
+            
+            if (e)
+                fprintf(stderr, "%s : error getting sector size of block device : %i", dest, e);
+        }
         
-        if (!ioctl(fileno(destfile), BLKDISCARD, &range))
-            return 0;
+        if (sectorsize) {
+            unsigned long long range[2];
+            
+            unsigned long long unaligned = start%sectorsize;
+            
+            if (unaligned) {
+                unaligned = sectorsize-unaligned;
+                
+                fprintf(stderr, "prefix %llu bytes of zero to sector align\n", unaligned);
+                
+                if (write_actural_zeros(tempmem, tempmemsize, start, unaligned, dest, destfile))
+                    return 1;
+                    
+                start += unaligned;
+                len -= unaligned;
+            }
+            
+            unaligned = len%sectorsize;
+            
+            if (unaligned)
+            {
+                fprintf(stderr, "append %llu bytes of zeros post sector align\n", unaligned);
+                len -= unaligned;
+            }
+            
+            range[0] = start/sectorsize;
+            range[1] = len/sectorsize;
+            
+            fprintf(stderr,"discard sectors %llu from sector %llu\n", range[1], range[0]);
+
+            int e = ioctl(fileno(destfile), BLKDISCARD, &range);            
+
+            if (!e) {
+                
+                if (write_actural_zeros(tempmem, tempmemsize, start+len, unaligned, dest, destfile))
+                    return 1;
+                
+                return 0;
+            }
+            else len += unaligned;
+
+            fprintf(stderr, "discard failed error %i\n", e);
+ 
+       }
     }
 #endif
     
@@ -186,38 +266,7 @@ int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len,
         }
     }
     
-    if (fseek(destfile, start, SEEK_SET)){
-        fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
-                errno, strerror(errno));
-        return 1;
-    }
-    
-    memset(tempmem, 0, tempmemsize);
-    
-    while(len) {
-        
-        size_t zeros = (tempmemsize < len)?tempmemsize:len;
-                
-        fwrite(tempmem, 1, zeros, destfile);
-        
-        if (ferror(destfile)) {
-            fprintf(stderr,"%s: first file write error: %d: %s %llu\n", dest,
-                    errno, strerror(errno), (unsigned long long)len);
-            return 1;
-        }
-        
-        fflush(destfile);
-        
-        if (ferror(destfile)) {
-            fprintf(stderr,"%s: first file flush error: %d: %s %llu\n", dest,
-                    errno, strerror(errno), (unsigned long long)len);
-            return 1;
-        }
-        
-        len -= zeros;
-    }
-    
-    return 0;
+    return write_actural_zeros(tempmem, tempmemsize, start, len, dest, destfile);
 }
 
 
