@@ -175,60 +175,82 @@ int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len,
     
 #if defined(__linux__)    
     if (S_ISBLK(dstmode)) {
-        static size_t sectorsize = 0;
-        
         int fd = fileno(destfile);
-                
-        if (!sectorsize) {
-            int e = ioctl(fd, BLKSSZGET, &sectorsize);
+        
+        static int candiscard = -1;
+        
+        if (candiscard == -1)  {
+            int zeroes = 0;
+            
+            int e = ioctl(fd, BLKDISCARDZEROES, &zeroes);
             
             if (e)
-                fprintf(stderr, "%s : error getting sector size of block device : %i", dest, e);
+                fprintf(stderr, "%s : error getting discard zeros of block device : %i\n", dest, e);
+                
+            if (zeroes)
+                candiscard = 1;
+            else  {
+                candiscard = 0;
+                
+                fprintf(stderr, "%s : no zero discards on block device\n", dest);
+            }
         }
         
-        if (sectorsize) {
-            unsigned long long range[2];
+        if (candiscard)
+        {
+            static size_t sectorsize = 0;
             
-            unsigned long long unaligned = start%sectorsize;
+            if (!sectorsize) {
+                int e = ioctl(fd, BLKSSZGET, &sectorsize);
+                
+                if (e)
+                    fprintf(stderr, "%s : error getting sector size of block device : %i\n", dest, e);
+            }
             
-            if (unaligned) {
-                unaligned = sectorsize-unaligned;
+            if (sectorsize) {
+                unsigned long long range[2];
                 
-                fprintf(stderr, "prefix %llu bytes of zero to sector align\n", unaligned);
+                unsigned long long unaligned = start%sectorsize;
                 
-                if (write_actural_zeros(tempmem, tempmemsize, start, unaligned, dest, destfile))
-                    return 1;
+                if (unaligned) {
+                    unaligned = sectorsize-unaligned;
                     
-                start += unaligned;
-                len -= unaligned;
-            }
-            
-            unaligned = len%sectorsize;
-            
-            if (unaligned)
-            {
-                fprintf(stderr, "append %llu bytes of zeros post sector align\n", unaligned);
-                len -= unaligned;
-            }
-            
-            range[0] = start/sectorsize;
-            range[1] = len/sectorsize;
-            
-            fprintf(stderr,"discard sectors %llu from sector %llu\n", range[1], range[0]);
-
-            int e = ioctl(fileno(destfile), BLKDISCARD, &range);            
-
-            if (!e) {
+                    fprintf(stderr, "prefix %llu bytes of zero to sector align\n", unaligned);
+                    
+                    if (write_actural_zeros(tempmem, tempmemsize, start, unaligned, dest, destfile))
+                        return 1;
+                        
+                    start += unaligned;
+                    len -= unaligned;
+                }
                 
-                if (write_actural_zeros(tempmem, tempmemsize, start+len, unaligned, dest, destfile))
-                    return 1;
+                unaligned = len%sectorsize;
                 
-                return 0;
-            }
-            else len += unaligned;
+                if (unaligned)
+                {
+                    fprintf(stderr, "append %llu bytes of zeros post sector align\n", unaligned);
+                    len -= unaligned;
+                }
+                
+                range[0] = start/sectorsize;
+                range[1] = len/sectorsize;
+                
+                fprintf(stderr,"discard sectors %llu from sector %llu\n", range[1], range[0]);
 
-            fprintf(stderr, "discard failed error %i\n", e);
- 
+                int e = ioctl(fileno(destfile), BLKDISCARD, &range);            
+
+                if (!e) {
+                    
+                    if (write_actural_zeros(tempmem, tempmemsize, start+len, unaligned, dest, destfile))
+                        return 1;
+                    
+                    return 0;
+                }
+                else len += unaligned;
+
+                fprintf(stderr, "discard failed error %i\n", e);
+     
+           }
        }
     }
 #endif
