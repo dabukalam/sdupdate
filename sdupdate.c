@@ -246,12 +246,12 @@ int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
     char* tmpch;
     char* cmpch;
     if ( (tmpch = malloc(buffsize)) == NULL) {
-        fprintf(stderr,"%lu: memory allocation error: %d: %s\n", buffsize, 
+        fprintf(stderr,"%lu: memory allocation error: %d: %s\n", (unsigned long)buffsize, 
                 errno, strerror(errno));
         return EXIT_FAILURE;
     }
     if ( (cmpch  = malloc(buffsize)) == NULL) {
-        fprintf(stderr,"%lu: memory allocation error: %d: %s\n", buffsize, 
+        fprintf(stderr,"%lu: memory allocation error: %d: %s\n", (unsigned long)buffsize, 
                 errno, strerror(errno));
         return EXIT_FAILURE;
     }
