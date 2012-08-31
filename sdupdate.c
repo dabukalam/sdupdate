@@ -18,8 +18,6 @@
 #if defined(__linux__) 
 #define _GNU_SOURCE
 #include <linux/fs.h>
-#include <linux/falloc.h>
-#include <fcntl.h>
 #else
 #define _POSIX_C_SOURCE 2
 #endif
@@ -177,33 +175,40 @@ int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len,
     
 
     if (S_ISREG(dstmode)) {
-#if defined(__linux__)
-        if (!dstisnew) {
-            int e = fallocate(fileno(destfile), FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE, start, len);
-            
-            if (e) {
-                fprintf(stderr,"%s: file fallocate(syscall) error: %d\n", dest, e);
-                return 1;
-            }
-        }
-#endif
-        
-        if (fseek(destfile, start, SEEK_SET)){
-            fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
-                    errno, strerror(errno));
-            return 1;
-        }
+        int dstfileno = fileno(destfile);
 
+        if (!dstisnew)
+            goto zerosfallback;
         
-        if (fseek(destfile, len, SEEK_CUR)){
-            fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
-                    errno, strerror(errno));
+        off_t r = lseek(dstfileno, start+len, SEEK_SET);
+        
+        if (r != start+len) {
+            fprintf(stderr,"%s: file seek error:\n", dest);
             return 1;
         }
+        
+        r = lseek(dstfileno, start+len-1, SEEK_SET);
+        
+        if (r != start+len-1) {
+            fprintf(stderr,"%s: file seek error:\n", dest);
+            return 1;
+        }
+        
+        char c = 0;
+        
+        if (write(dstfileno, &c, 1) != 1) {
+            fprintf(stderr,"%s: file write error:\n", dest);
+            return 1;
+            
+        }
+        
+        fseek(destfile, start+len, SEEK_SET);
         
         return 0;
     }
     
+    zerosfallback:
+
     if (fseek(destfile, start, SEEK_SET)){
         fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
                 errno, strerror(errno));
