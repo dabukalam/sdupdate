@@ -140,27 +140,7 @@ int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len,
 { 
     fprintf(stderr, "write_zeros %llu -> %llu\n", (unsigned long long)start, (unsigned long long)start+len );
     
-#if defined(__linux__)
-    if (S_ISREG(dstmode))
-    {
-        /*
-         * If you can trim, you should. If you are punching a hole instead anyway, why?
-         * Well it's about wear leveling.
-         * By doing this the blocks are freed for the device to reuse to reduce wear.
-         * The filesystem has no knowledge of block wear. It just has free and used blocks.
-         * It will hand back blocks regardless of wear.
-         * In future it may automatically pass free blocks to the device, but today it doesn't.
-         */
-        struct fstrim_range range;
-        
-        range.start = start;
-        range.len = len;
-        range.minlen = len;
-        
-        if (!ioctl(fileno(destfile), FITRIM, &range))
-            return 0;
-    }
-    
+#if defined(__linux__)    
     if (S_ISBLK(dstmode))
     {
         uint64_t range[2];
