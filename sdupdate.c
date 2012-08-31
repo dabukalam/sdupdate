@@ -139,7 +139,9 @@ int all_zero(const char* data, size_t size)
 
 
 int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len, const char* dest, FILE *destfile, mode_t dstmode, int dstisnew)
-{
+{ 
+    fprintf(stderr, "write_zeros %llu -> %llu\n", (unsigned long long)start, (unsigned long long)start+len );
+    
 #if defined(__linux__)
     if (S_ISREG(dstmode))
     {
@@ -173,15 +175,10 @@ int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len,
     }
 #endif
     
-    if (fseek(destfile, start, SEEK_SET)){
-        fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
-                errno, strerror(errno));
-        return 1;
-    }
 
-    if (S_ISREG(dstmode))
-    {
-         if (!dstisnew) {
+    if (S_ISREG(dstmode)) {
+#if defined(__linux__)
+        if (!dstisnew) {
             int e = fallocate(fileno(destfile), FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE, start, len);
             
             if (e) {
@@ -189,17 +186,29 @@ int write_zeros(char* tempmem, size_t tempmemsize, uint64_t start, uint64_t len,
                 return 1;
             }
         }
+#endif
+        
+        if (fseek(destfile, start, SEEK_SET)){
+            fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
+                    errno, strerror(errno));
+            return 1;
+        }
+
         
         if (fseek(destfile, len, SEEK_CUR)){
             fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
                     errno, strerror(errno));
             return 1;
         }
-    
         
         return 0;
     }
     
+    if (fseek(destfile, start, SEEK_SET)){
+        fprintf(stderr,"%s: file seek error: %d: %s\n", dest, 
+                errno, strerror(errno));
+        return 1;
+    }
     
     memset(tempmem, 0, tempmemsize);
     
@@ -340,8 +349,9 @@ int copy (const char* srce, const char* dest, size_t buffsize, int progress) {
             
         }
 
+        where += lastw;
+
         if (progress) {
-            where += lastw;
             if (far(where, end)) {
                 fprintf(stderr,"progress bar failure: %d: %s\n", errno,
                         strerror(errno));
